@@ -1,6 +1,11 @@
 # Globally-and-Locally-Consistent-Image-Completion-Pytorch-Implementation
 Implementation of the Globally and Locally Consistent Image Completion paper (http://dx.doi.org/10.1145/3072959.3073659) in Pytorch, on the CelebA Dataset
 
+
+## Example results
+
+------------------ WORK IN PROGRESS ------------------
+
 ## Project Decomposition
 
 This project has four main components: 3 .py files and an .ipynb notebook file:
@@ -16,3 +21,5 @@ This project has four main components: 3 .py files and an .ipynb notebook file:
 ## Training
 
 ------------------ WORK IN PROGRESS ------------------
+
+## Organization of this directory
