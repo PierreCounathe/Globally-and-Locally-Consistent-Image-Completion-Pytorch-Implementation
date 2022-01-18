@@ -1,74 +1,29 @@
-# Imports and check for GPU availability
-# from cgi import test
 import torch
-
-# from torch import *
 import torchvision
-import torch.nn as nn
-import torch.nn.functional as F
 import torchvision.transforms as transforms
 import numpy as np
-from tqdm.notebook import tqdm as tqdm
 import matplotlib.pyplot as plt
-import matplotlib
-from torchvision import datasets
-import torch.utils.model_zoo as model_zoo
-from torch.utils.data.sampler import SubsetRandomSampler
 import random as r
-import cv2
-import time
 
-from models import *
-
-if torch.cuda.is_available():
-    device = torch.device("cuda")
-    use_cuda = True
-    print("running on GPU")
-else:
-    device = torch.device("cpu")
-    use_cuda = False
-    print("running on CPU")
-
-lr_d = 1
-lr_c = 1
-if use_cuda:
-    model_c = Completion().cuda()
-    model_d = Discriminator().cuda()
-else:
-    model_c = Completion()
-    model_d = Discriminator()
-opt_d = torch.optim.Adadelta(model_d.parameters(), lr=lr_d)
-opt_c = torch.optim.Adadelta(model_c.parameters(), lr=lr_c)
+NUM_FIGURES = 0
 
 
-transform = transforms.Compose(
-    [
-        transforms.RandomResizedCrop((256, 256), scale=(0.6666666666667, 1.0), ratio=(1.0, 1.0)),
-        transforms.ToTensor(),
-    ]
-)
-train_set = torchvision.datasets.ImageFolder(root="data/celeba_train", transform=transform)
-test_set = torchvision.datasets.ImageFolder(root="./test", transform=transform)
-dataset_with_labels = True
-test_loader = torch.utils.data.DataLoader(test_set)
-
-# --------------------------------------------------------------------------------------------------------
-# --------------------------------------------------------------------------------------------------------
-# UTILS FUNCTIONS
-# --------------------------------------------------------------------------------------------------------
-# --------------------------------------------------------------------------------------------------------
 def size_crop():
     """
     Defines the transformation that is applied to the images in pre-processing.
 
+    Returns:
+        torchvision.transforms.transforms.RandomResizedCrop: A pre-processing transformation.
     """
+
     return transforms.RandomResizedCrop((256, 256), scale=(0.6666666666667, 1.0), ratio=(1.0, 1.0))
 
 
-def imshow(img):
-    """
-    * inputs:
-          - img : [3, H, W] tensor
+def imshow(img: torch.Tensor):
+    """Simple visualisation function for torch tensors.
+
+    Args:
+        img (torch.Tensor): The tensor representation of the image.
     """
     npimg = img.cpu().numpy()
     plt.imshow(np.transpose(npimg, (1, 2, 0)))
@@ -86,11 +41,9 @@ def mask(
     generate_mask=True,
 ):
     """
-    Generates as many masks as the batch size.
-    If generate_mask is True, returns the masks: tensors of the same shape as the images, with a randomly chosen rectangle area of ones. Also returns the masks centers.
-    Else, it does not generate the masks and only returns the masks centers, useful to crop the image and create a local image, input of the discriminator network.
-    This is useful when training the Discriminator network on its own.
-    * inputs:
+    Generates a mask tensor (of values 1 and 0) and a list of each holes centers.
+
+    Args:
             - b_size : the batch size of the tensor to add the mask
             - h,w : the height and wide of the images (default = (256,256))
             - h_range_mask : int tuple of size 2 representing the min and max dimensions for the height of the
@@ -99,71 +52,74 @@ def mask(
             holes. The first element must be smaller than the second which is smaller than w
             - num_holes : the number of desired holes in the mask
             - generate_mask : when true, will ouput a mask. If not, will only return the centers
-    * returns:
+    Returns:
             - m : A torch tensor of shape [b_size,1,256,256], representing the mask (if generate_mask is True)
             - centers : A list of int tuples of the estimated centers' coordinates of the holes (we'll need them for the localD crop)
     """
     if generate_mask:
-        if use_cuda:
-            m = torch.zeros((b_size, 1, h, w)).cuda()  # Initializing the mask
-        else:
-            m = torch.zeros((b_size, 1, h, w))
-    centers = [[] for j in range(b_size)]
-    for i_holes in range(num_holes):  # Number of masks
-        for i_batch in range(b_size):  # Generation of 1 mask by image
-            h_mask, w_mask = r.randint(*h_range_mask), r.randint(*w_range_mask)  # Acquiring hole size
-            i, j = r.randint(0, h - h_mask), r.randint(0, w - w_mask)  # Acquiring hole position
+
+        # Initializing the mask.
+        m = torch.zeros((b_size, 1, h, w)).cuda() if use_cuda else torch.zeros((b_size, 1, h, w))
+
+    # Initializing the center.
+    centers = [[] for _ in range(b_size)]
+
+    for _ in range(num_holes):
+        for i_batch in range(b_size):
+
+            # Acquiring hole size.
+            h_mask, w_mask = r.randint(*h_range_mask), r.randint(*w_range_mask)
+
+            # Acquiring hole position.
+            i, j = r.randint(0, h - h_mask), r.randint(0, w - w_mask)
+
+            # Writing hole coordinates.
             centers[i_batch].append((i + h_mask // 2, j + w_mask // 2))
+
             if generate_mask:
-                for x in range(h_mask):
-                    for y in range(w_mask):
-                        m[i_batch, 0, i + x, j + y] = 1.0  # Filling the hole location with ones
-    if generate_mask:
-        return (m, centers)
-    else:
-        return centers
+
+                # Filling the hole location with ones.
+                m[i_batch, :, i : i + h_mask, j : j + w_mask] = 1.0
+
+    return (m, centers) if generate_mask else centers
 
 
 def apply_mask(x, m, pixel, use_cuda=True):
     """
-    From an image a mask and a pixel value, outputs an image with a hole corresponding to the mask, the color of the input pixel value.
-    * inputs :
+    Set each pixel in the masked zone of an image to a given color.
+
+    Args:
         - x : a [b_size,3,H,W] shape tensor
         - m : Tensor of shape [b_size,1,H,W], representing the mask
         - pixel : The pixel value to put in the masked area int (tuple or list) in range [0,255]
 
-    * outputs :
+    Returns:
         A [b_size,4,H,W] tensor with all images patched + the mask in the the 4 elements of dim = 1
     """
-    b_size, _, h, w = x.shape
+    pix = torch.tensor(pixel).view((1, 3, 1, 1)) / 255.0
     if use_cuda:
-        pix = (torch.tensor(pixel).view((1, 3, 1, 1)) / 255.0).cuda()
-    else:
-        pix = torch.tensor(pixel).view((1, 3, 1, 1)) / 255.0
+        pix = pix.cuda()
+
     x_patched = x - x * m + m * pix
+
     return torch.cat((x_patched, m), dim=1)
 
 
-def visuel_mask(test_loader, n_batch=1, use_cuda=True):
+def visuel_mask(test_loader, n=1, use_cuda=True):
     """
     A visual function that will show what is a batch of images with turquoise holes
-    * inputs :
-      - test_loader : test DataLoader
-      - n_batch : number of batches to show
-      - use_cuda : cuda availability bool
     """
-    for i in range(n_batch):
+    for _ in range(n):
         # get some random training images
         dataiter = iter(test_loader)
         images, _ = dataiter.next()
-        turquoise_rgb = (64, 224, 208)
         m, l = mask(
             64, h=32, w=32, h_range_mask=(5, 10), w_range_mask=(5, 10), num_holes=1
         )  # Generate an appropriate turquoise mask
         if use_cuda:
-            im = apply_mask(images.cuda(), m, turquoise_rgb)  # Apply the mask
+            im = apply_mask(images.cuda(), m, (64, 224, 208))  # Apply the mask
         else:
-            im = apply_mask(images, m, turquoise_rgb)
+            im = apply_mask(images, m, (64, 224, 208))
         # show images with the patches
         imshow(torchvision.utils.make_grid(im[:, :3]))
         imshow(torchvision.utils.make_grid(im[:, 3:]))
@@ -174,7 +130,6 @@ def hole_cropping(
     x, centers, use_cuda=True
 ):  # This function is not so generic because its particular to our problem, it returns an image half the size of the first
     """
-    Takes a batch image, hole centers coordinates and returns images half the size of the original ones, centered around the holes centers.
     * inputs :
         - x : a [b_size,3,H,W] shape tensor
         - centers : a list of list of int tuples representing a (b_size,1) shape array, containing the center of the holes
@@ -197,60 +152,29 @@ def hole_cropping(
     return t
 
 
-def load_checkpoint(model, optimizer, filename):
-    """
-    Loads the model and optimizer contained in a file, into the model and optimizer passed in the function.
-    *inputs:
-    - model : a model initialized with the corresponding class
-    - optimizer : an adadelta optimizer initialized with the model parameters
-    - filename : the filename of the model to be loaded
-    """
-    print("=> Loading {} into the model".format(filename))
-    checkpoint = torch.load(filename)
-    model.load_state_dict(checkpoint["state_dict"])
-    optimizer.load_state_dict(checkpoint["optimizer"])
-    print("Model and optimizer loaded")
-
-
-load_checkpoint(model_c, opt_c, "model_c_checkpoint_eot9.pth.tar")
-load_checkpoint(model_d, opt_d, "model_d_checkpoint_eot9.pth.tar")
-
-
 def test_and_compare(
-    model=model_c,
-    model_d=model_d,
-    test_loader=test_loader,
-    dataset_with_labels=True,
-    number_of_pictures=1,
+    model_c,
+    model_d,
+    test_loader,
+    number_of_pictures=5,
     h_range_mask=(96, 128),
     w_range_mask=(96, 128),
     num_holes=1,
-    p=0.0,
+    p=0.002,
+    dataset_with_labels=False,
+    use_cuda=True,
     pixel=(130, 107, 95),
-    savefigures=True,
 ):
     """
-    Shows images from the testloader. Original image, image with mask, and the completed one.
-    The title contains the outputs of the discrimination network for the original image and for the completed one, for the task of classifying images as original (1) or completed (0).
-    * inputs :
-      - model_c : trained completion network
-      - model_d : trained discrimination network
-      - test_loader : a test DataLoader iterator
-      - dataset_with_labels : boolean, True is the dataset used has labels
-      - number_of_pictures : the number of pictures to plot
-      - h_range_mask : the range of mask heights
-      - w_range_mask : the range of mask widths
-      - num_holes : number of holes per image
-      - p : an arbitraty probability to artificially select random images from a DataLoader iterator
-      - pixel : the mean pixel in the training dataset
-      - savefigures : Boolean, if true, saves the output figures
+    Shows images from the testloader. Original image, with mask, and the completed one.
 
     """
-    model.eval()
+    model_c.eval()
     model_d.eval()
     i = 0
+    global NUM_FIGURES
     for data in test_loader:
-        if np.random.random() > p:
+        if np.random.random() < p:
             if i < number_of_pictures:
                 if dataset_with_labels:
                     X, Y = data
@@ -284,7 +208,7 @@ def test_and_compare(
                     else:
                         im = apply_mask(x, m, pixel).view(4, 256, 256)
                     model_c_input = im.view(1, 4, 256, 256)
-                    model_c_output = model(model_c_input)
+                    model_c_output = model_c(model_c_input)
                     recombined_output = x.cuda() - x.cuda() * m + model_c_output * m
                     # imshow(recombined_output.detach().view(3, 256, 256))
                     image3 = recombined_output.detach().view(3, 256, 256)
@@ -297,16 +221,11 @@ def test_and_compare(
                     output_d = model_d((input_ld, model_c_output))
                     prob = output_d.item()
                     plt.title(
-                        "Original Image discrimination network score (1 = classified as original) : {} - Completed Image discrimination network score (1 = classified as original) : {}".format(
-                            prob_t, prob
-                        ),
-                        loc="center",
+                        "P(True) = True : {} - P(False) = True : {}".format(prob_t, prob), loc="center"
                     )
                     plt.imshow(np.transpose(npimg3, (1, 2, 0)))
-                    if savefigures:
-                        plt.savefig(
-                            "saves/figures/fig{}.png".format(int(time.time()))
-                        )  # Choose your directory
+                    plt.savefig("saves/figures/fig{}.png".format(NUM_FIGURES + 1))
+                    NUM_FIGURES += 1
             else:
                 break
             i += 1
@@ -314,48 +233,26 @@ def test_and_compare(
 
 def save_checkpoint(state, filename):
     """
-    Saves the state checkpoint of a model in a directory
+    Save the state checkpoint in a directory
     """
     print("=> Saving {}".format(filename))
     torch.save(state, filename)
 
 
-def mean_pixel(dataset=train_set, dataset_with_labels=True):
+def load_checkpoint(model, optimizer, filename):
     """
-    Computes the mean pixel of the train dataset that serve as base masks color.
-    * inputs :
-      - dataset : the train dataset
-    $ ouputs :
-      - tuple(pix) : a tuple (R, G, B) of the values of the RGB channels of the mean pixel
+    Loads the model and optimizer contained in a file, into the model and optimizer passed in the function.
+    *inputs:
+    - model : a model initialized with the corresponding class
+    - optimizer : an adadelta optimizer initialized with the model parameters
+    - filename : the filename of the model to be loaded
     """
-    pix = torch.zeros(3)
-    n = len(dataset)
-    for i in tqdm(range(n)):
-        data = dataset[i]
-        if dataset_with_labels:
-            data = data[0]
-        r = data[0].mean()
-        g = data[1].mean()
-        b = data[2].mean()
-        t = torch.tensor([r, g, b])
-        pix += t
-    pix = (255.0 / n) * pix
-    return tuple(pix)
+    print("=> Loading {} into the model".format(filename))
+    checkpoint = torch.load(filename)
+    model.load_state_dict(checkpoint["state_dict"])
+    optimizer.load_state_dict(checkpoint["optimizer"])
+    print("Model and optimizer loaded")
 
 
-if __name__ == "__main__":
-    load_checkpoint(model_c, opt_c, "model_c_checkpoint_eot9.pth.tar")
-    load_checkpoint(model_d, opt_d, "model_d_checkpoint_eot9.pth.tar")
-    test_and_compare(
-        model=model_c,
-        model_d=model_d,
-        test_loader=test_loader,
-        dataset_with_labels=True,
-        number_of_pictures=1,
-        h_range_mask=(22, 34),
-        w_range_mask=(12, 50),
-        num_holes=1,
-        p=0.0,
-        pixel=(130, 107, 95),
-        savefigures=True,
-    )
+# def test_and_compare(model = model_c, model_d = model_d, test_loader = test_loader, number_of_pictures = 5, h_range_mask = (96,128), w_range_mask = (96,128),
+#          num_holes = 1, p =0.002, dataset_with_labels = False):

@@ -1,216 +1,98 @@
-# Imports and check for GPU availability
-import torch
-
-# from torch import *
-import torchvision
-import torch.nn as nn
-import torch.nn.functional as F
-import torchvision.transforms as transforms
-import numpy as np
-from tqdm.notebook import tqdm as tqdm
-import matplotlib.pyplot as plt
-import matplotlib
-from torchvision import datasets
-import torch.utils.model_zoo as model_zoo
-from torch.utils.data.sampler import SubsetRandomSampler
-import random as r
-import cv2
-
-if torch.cuda.is_available():
-    device = torch.device("cuda")
-    use_cuda = True
-    print("running on GPU")
-else:
-    device = torch.device("cpu")
-    use_cuda = False
-    print("running on CPU")
+from torch import cat, nn
 
 
-# --------------------------------------------------------------------------------------------------------
-# --------------------------------------------------------------------------------------------------------
-# COMPLETION NETWORK CLASS
-# --------------------------------------------------------------------------------------------------------
-# --------------------------------------------------------------------------------------------------------
 class Completion(nn.Module):
     def __init__(self):
         super(Completion, self).__init__()
         # ----------------
         self.conv1 = nn.Conv2d(
-            in_channels=4,
-            out_channels=64,
-            kernel_size=5,
-            stride=1,
-            dilation=1,
-            padding=2,
+            in_channels=4, out_channels=64, kernel_size=5, stride=1, dilation=1, padding=2
         )
         self.norm1 = nn.BatchNorm2d(64)
         # ---------------- CHANGE IN THE NUMBER OF OUTPUTS
         self.conv2 = nn.Conv2d(
-            in_channels=64,
-            out_channels=128,
-            kernel_size=3,
-            stride=2,
-            dilation=1,
-            padding=1,
+            in_channels=64, out_channels=128, kernel_size=3, stride=2, dilation=1, padding=1
         )
         self.norm2 = nn.BatchNorm2d(128)
 
         self.conv3 = nn.Conv2d(
-            in_channels=128,
-            out_channels=128,
-            kernel_size=3,
-            stride=1,
-            dilation=1,
-            padding=1,
+            in_channels=128, out_channels=128, kernel_size=3, stride=1, dilation=1, padding=1
         )
         self.norm3 = nn.BatchNorm2d(128)
         # ---------------- CHANGE IN THE NUMBER OF OUTPUTS
         self.conv4 = nn.Conv2d(
-            in_channels=128,
-            out_channels=256,
-            kernel_size=3,
-            stride=2,
-            dilation=1,
-            padding=1,
+            in_channels=128, out_channels=256, kernel_size=3, stride=2, dilation=1, padding=1
         )
         self.norm4 = nn.BatchNorm2d(256)
 
         self.conv5 = nn.Conv2d(
-            in_channels=256,
-            out_channels=256,
-            kernel_size=3,
-            stride=1,
-            dilation=1,
-            padding=1,
+            in_channels=256, out_channels=256, kernel_size=3, stride=1, dilation=1, padding=1
         )
         self.norm5 = nn.BatchNorm2d(256)
 
         self.conv6 = nn.Conv2d(
-            in_channels=256,
-            out_channels=256,
-            kernel_size=3,
-            stride=1,
-            dilation=1,
-            padding=1,
+            in_channels=256, out_channels=256, kernel_size=3, stride=1, dilation=1, padding=1
         )
         self.norm6 = nn.BatchNorm2d(256)
 
         self.dilatedconv7 = nn.Conv2d(
-            in_channels=256,
-            out_channels=256,
-            kernel_size=3,
-            stride=1,
-            dilation=2,
-            padding=2,
+            in_channels=256, out_channels=256, kernel_size=3, stride=1, dilation=2, padding=2
         )
         self.norm7 = nn.BatchNorm2d(256)
 
         self.dilatedconv8 = nn.Conv2d(
-            in_channels=256,
-            out_channels=256,
-            kernel_size=3,
-            stride=1,
-            dilation=4,
-            padding=4,
+            in_channels=256, out_channels=256, kernel_size=3, stride=1, dilation=4, padding=4
         )
         self.norm8 = nn.BatchNorm2d(256)
 
         self.dilatedconv9 = nn.Conv2d(
-            in_channels=256,
-            out_channels=256,
-            kernel_size=3,
-            stride=1,
-            dilation=8,
-            padding=8,
+            in_channels=256, out_channels=256, kernel_size=3, stride=1, dilation=8, padding=8
         )
         self.norm9 = nn.BatchNorm2d(256)
 
         self.dilatedconv10 = nn.Conv2d(
-            in_channels=256,
-            out_channels=256,
-            kernel_size=3,
-            stride=1,
-            dilation=16,
-            padding=16,
+            in_channels=256, out_channels=256, kernel_size=3, stride=1, dilation=16, padding=16
         )
         self.norm10 = nn.BatchNorm2d(256)
 
         self.conv11 = nn.Conv2d(
-            in_channels=256,
-            out_channels=256,
-            kernel_size=3,
-            stride=1,
-            dilation=1,
-            padding=1,
+            in_channels=256, out_channels=256, kernel_size=3, stride=1, dilation=1, padding=1
         )
         self.norm11 = nn.BatchNorm2d(256)
 
         self.conv12 = nn.Conv2d(
-            in_channels=256,
-            out_channels=256,
-            kernel_size=3,
-            stride=1,
-            dilation=1,
-            padding=1,
+            in_channels=256, out_channels=256, kernel_size=3, stride=1, dilation=1, padding=1
         )
         self.norm12 = nn.BatchNorm2d(256)
         # ----------------- CHANGE IN THE NUMBER OF OUTPUTS
         self.deconv13 = nn.ConvTranspose2d(
-            in_channels=256,
-            out_channels=128,
-            kernel_size=4,
-            stride=2,
-            dilation=1,
-            padding=1,
+            in_channels=256, out_channels=128, kernel_size=4, stride=2, dilation=1, padding=1
         )  # Convtranspose stride = 2 is the 1/2 stride of the paper
         self.norm13 = nn.BatchNorm2d(128)
 
         self.conv14 = nn.Conv2d(
-            in_channels=128,
-            out_channels=128,
-            kernel_size=3,
-            stride=1,
-            dilation=1,
-            padding=1,
+            in_channels=128, out_channels=128, kernel_size=3, stride=1, dilation=1, padding=1
         )
         self.norm14 = nn.BatchNorm2d(128)
         # ----------------- CHANGE IN THE NUMBER OF OUTPUTS
         self.deconv15 = nn.ConvTranspose2d(
-            in_channels=128,
-            out_channels=64,
-            kernel_size=4,
-            stride=2,
-            dilation=1,
-            padding=1,
+            in_channels=128, out_channels=64, kernel_size=4, stride=2, dilation=1, padding=1
         )
         self.norm15 = nn.BatchNorm2d(64)
 
         self.conv16 = nn.Conv2d(
-            in_channels=64,
-            out_channels=32,
-            kernel_size=3,
-            stride=1,
-            dilation=1,
-            padding=1,
+            in_channels=64, out_channels=32, kernel_size=3, stride=1, dilation=1, padding=1
         )
         self.norm16 = nn.BatchNorm2d(32)
 
         self.output = nn.Conv2d(
-            in_channels=32,
-            out_channels=3,
-            kernel_size=3,
-            stride=1,
-            dilation=1,
-            padding=1,
+            in_channels=32, out_channels=3, kernel_size=3, stride=1, dilation=1, padding=1
         )
 
         self.inside_activation = nn.ReLU(True)
         self.output_activation = nn.Sigmoid()
 
     def forward(self, x):
-        """
-        Forward propagation in the completion network
-        """
         out = self.norm1(self.inside_activation(self.conv1(x)))
         out = self.norm2(self.inside_activation(self.conv2(out)))
         out = self.norm3(self.inside_activation(self.conv3(out)))
@@ -230,11 +112,6 @@ class Completion(nn.Module):
         return self.output_activation(self.output(out))
 
 
-# --------------------------------------------------------------------------------------------------------
-# --------------------------------------------------------------------------------------------------------
-# DISCRIMINATION NETWORK CLASS
-# --------------------------------------------------------------------------------------------------------
-# --------------------------------------------------------------------------------------------------------
 class Discriminator(nn.Module):
     def __init__(self):
         super(Discriminator, self).__init__()
@@ -302,19 +179,14 @@ class Discriminator(nn.Module):
         self.out_features = 8192
         self.fc = nn.Linear(self.out_features, 1024)
 
-        # COMBINATION AND CONCATENATION OF BOTH DISCRIMINATORS
-        # ----------------
+        # ---------------- COMBINATION AND CONCATENATION
 
         self.final_fc = nn.Linear(2048, 1)
         self.inside_activation = nn.ReLU(True)
         self.output_activation = nn.Sigmoid()
 
     def forward(self, x):
-        """
-        Forward propagation in the discrimination network
-        """
-        # The input `x` is a tuple with the local image and the global image
-        local_x, global_x = x
+        local_x, global_x = x  # En entrée on passera un tuple avec d'abord l'image locale puis globale !
 
         Y = self.Local_norm1(self.inside_activation(self.Local_conv1(local_x)))
         Y = self.Local_norm2(self.inside_activation(self.Local_conv2(Y)))
@@ -331,6 +203,6 @@ class Discriminator(nn.Module):
         Z = self.Global_norm6(self.inside_activation(self.Global_conv6(Z)))
         Z = self.inside_activation(self.fc(Z.view(-1, self.out_features)))
 
-        out = torch.cat((Y, Z), dim=1)
+        out = cat((Y, Z), dim=1)
         out = self.final_fc(out)
         return self.output_activation(out)

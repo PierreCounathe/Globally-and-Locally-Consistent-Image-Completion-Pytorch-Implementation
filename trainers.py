@@ -1,107 +1,28 @@
-# Imports and check for GPU availability
-import torch
-from torch import *
-import torchvision
-import torch.nn as nn
-import torch.nn.functional as F
-import torchvision.transforms as transforms
-import numpy as np
-from tqdm.notebook import tqdm as tqdm
-import matplotlib.pyplot as plt
-import matplotlib
-from torchvision import datasets
-import torch.utils.model_zoo as model_zoo
-from torch.utils.data.sampler import SubsetRandomSampler
-import random as r
-import cv2
-import time
-
-# Import utils functions
 from utils import *
-
-if torch.cuda.is_available():
-    device = torch.device("cuda")
-    use_cuda = True
-    print("running on GPU")
-else:
-    device = torch.device("cpu")
-    use_cuda = False
-    print("running on CPU")
-
-lr_d = 1
-lr_c = 1
-if use_cuda:
-    model_c = Completion().cuda()
-    model_d = Discriminator().cuda()
-else:
-    model_c = Completion()
-    model_d = Discriminator()
-opt_d = torch.optim.Adadelta(model_d.parameters(), lr=lr_d)
-opt_c = torch.optim.Adadelta(model_c.parameters(), lr=lr_c)
-
-transform = transforms.Compose(
-    [
-        transforms.RandomResizedCrop((256, 256), scale=(0.6666666666667, 1.0), ratio=(1.0, 1.0)),
-        transforms.ToTensor(),
-    ]
-)
-train_set = torchvision.datasets.ImageFolder(root="data/celeba_train", transform=transform)
-test_set = torchvision.datasets.ImageFolder(root="./data/celeba_test", transform=transform)
-dataset_with_labels = True
-test_loader = torch.utils.data.DataLoader(test_set)
-
-# --------------------------------------------------------------------------------------------------------
-# --------------------------------------------------------------------------------------------------------
-# COMPLETION NETWORK LOSS 1
-# --------------------------------------------------------------------------------------------------------
-# --------------------------------------------------------------------------------------------------------
-def C_loss(input, output, mask):
-    """
-    Computes the loss for the completion network when trained on its own (calculated only on the completed region)
-    * inputs :
-      - input : the original image
-      - output : the completed image
-      - mask : the mask that can be seen as the hole in the image
-    """
-    return F.mse_loss(output * mask, input * mask)
+import torch
+from tqdm import tqdm
 
 
-# --------------------------------------------------------------------------------------------------------
-# --------------------------------------------------------------------------------------------------------
-# COMPLETION NETWORK TRAINING ALGORITHM
-# --------------------------------------------------------------------------------------------------------
-# --------------------------------------------------------------------------------------------------------
+def C_loss(
+    input, output, mask
+):  # The loss for the completion network is calculed only in the completed region !
+    return torch.nn.functional.mse_loss(output * mask, input * mask)
+
+
 def train_C(
     model_c,
-    optimizer=opt_c,
-    train_set=train_set,
-    learning_rate=1.0,
+    optimizer,
+    train_set,
     train_acc_period=100,
     n_epoch=5,
     save_period=10000,
     batch_size=8,
     num_samples=1000,
     use_cuda=True,
-    pixel=(0, 0, 0),
-    dataset_with_labels=True,
-):
-    """
-    Algorithm that trains the completion network on its own
-    * inputs :
-      - model_c : the completion network
-      - optimizer : the optimizer for the completion network
-      - train_set : training dataset
-      - learning_rate : learning rate
-      - train_acc_period : intervals at which a loss is printed
-      - n_epochs : number of epochs
-      - save_period : intervals at which the model is automatically saved
-      - batch_size : training batch size
-      - num_samples : number of samples in the DataLoader sampler
-      - use_cuda : boolean indicating the use of a GPU
-      - pixel : the mean pixel on the training dataset
-      - dataset_with_labels : boolean, True is the dataset used has labels
-    """
-    print("Beginning the training of the Completion Network")
+    dataset_with_labels=False,
+    pixel=(130, 107, 95),
+):  # On pourra éventuellement rajouter un test sur une image à intervalle réguliers
+
     model_c.train()
     i = 0
     for epoch in tqdm(range(n_epoch)):
@@ -155,16 +76,11 @@ def train_C(
     print("Finished Training C")
 
 
-# --------------------------------------------------------------------------------------------------------
-# --------------------------------------------------------------------------------------------------------
-# DISCRIMINATION NETWORK TRAINING ALGORITHM
-# --------------------------------------------------------------------------------------------------------
-# --------------------------------------------------------------------------------------------------------
 def train_D(
     model_d,
     model_c,
-    optimizer=opt_d,
-    train_set=train_set,
+    optimizer,
+    train_set,
     learning_rate=1.0,
     train_acc_period=100,
     n_epoch=5,
@@ -172,30 +88,14 @@ def train_D(
     batch_size=8,
     num_samples=1000,
     use_cuda=True,
-    pixel=(0, 0, 0),
-    dataset_with_labels=True,
+    dataset_with_labels=False,
+    pixel=(130, 107, 95),
 ):
-    """
-    Algorithm that trains the discrimination network on its own
-    * inputs :
-      - model_d : the discrimination network
-      - optimizer : the optimizer for the discrimination network
-      - train_set : training dataset
-      - learning_rate : learning rate
-      - train_acc_period : intervals at which a loss is printed
-      - n_epochs : number of epochs
-      - save_period : intervals at which the model is automatically saved
-      - batch_size : training batch size
-      - num_samples : number of samples in the DataLoader sampler
-      - use_cuda : boolean indicating the use of a GPU
-      - pixel : the mean pixel on the training dataset
-      - dataset_with_labels : boolean, True is the dataset used has labels
-    """
-    print("Beginning the training of the Discrimination network")
+
     model_c.eval()
     model_d.train()
     i = 0
-    criterion = nn.BCELoss()
+    criterion = torch.nn.BCELoss()
     for epoch in tqdm(range(n_epoch)):
         train_loader = torch.utils.data.DataLoader(
             train_set,
@@ -262,7 +162,7 @@ def train_D(
                 print("[%d, %5d] loss: %f" % (epoch + 1, i + 1, running_loss))
                 running_loss = 0.0
             i += 1
-            del x
+            del x  # Je sais pas si c'est utile ! mon but c'est de désalouer la mémoire pour être sûr de pas dépasser la capacité de CUDA
         if (epoch % save_period == save_period - 1) or (epoch == n_epoch - 1):
             filename = "model_d_save/model_d_checkpoint_d_training_epoch{:d}.pth.tar".format(epoch + 1)
             save_checkpoint(
@@ -276,56 +176,29 @@ def train_D(
     print("Finished Training D")
 
 
-# --------------------------------------------------------------------------------------------------------
-# --------------------------------------------------------------------------------------------------------
-# ADVERSARIAL TRAINING ALGORITHM
-# --------------------------------------------------------------------------------------------------------
-# --------------------------------------------------------------------------------------------------------
 def train_C_and_D(
     model_c,
     model_d,
     alpha,
-    optimizer_c=opt_c,
-    optimizer_d=opt_d,
-    train_set=train_set,
-    lr_c=1.0,
-    lr_d=1.0,
+    optimizer_c,
+    optimizer_d,
+    train_set,
     train_acc_period=100,
     n_epoch=5,
     save_period=10000,
     batch_size=8,
     num_samples=1000,
     use_cuda=True,
-    pixel=(0, 0, 0),
-    dataset_with_labels=True,
+    dataset_with_labels=False,
+    pixel=(130, 107, 95),
 ):
-    """
-    Algorithm that trains both networks at the same time
-    * inputs :
-      - model_c : the completion network
-      - model_d : the discrimination network
-      - alpha : parameter that weights the two losses for the completion network (pixel-wise loss and dicrimination network-based loss)
-      - optimizer_c : the optimizer for the completion network
-      - optimizer_d : the optimizer for the discrimination network
-      - train_set : training dataset
-      - lr_c : learning rate for the completion network
-      - lr_d : learning rate for the discrimination network
-      - train_acc_period : intervals at which a loss is printed
-      - n_epochs : number of epochs
-      - save_period : intervals at which the models are automatically saved
-      - batch_size : training batch size
-      - num_samples : number of samples in the DataLoader sampler
-      - use_cuda : boolean indicating the use of a GPU
-      - pixel : the mean pixel on the training dataset
-      - dataset_with_labels : boolean, True is the dataset used has labels
-    """
-    print("Beginning the adversarial training of the Completion and Discrimination networks")
+
     running_loss_c = 0
     running_loss_d = 0
     model_c.train()
     model_d.train()
     i = 0
-    criterion = nn.BCELoss()
+    criterion = torch.nn.BCELoss()
     for epoch in tqdm(range(n_epoch)):
         train_loader = torch.utils.data.DataLoader(
             train_set,
@@ -337,7 +210,7 @@ def train_C_and_D(
         )
         for data in tqdm(
             train_loader
-        ):  # There is no need for labels in the training dataset, but we let users choose if they want to use labelized datasets
+        ):  # Normalement on prendra un dataset unsupervised donc sans labels, mais on laisse le choix
             if dataset_with_labels:
                 x, _ = data
             else:
@@ -348,8 +221,8 @@ def train_C_and_D(
 
             # zero the parameter gradients
 
-            opt_c.zero_grad()
-            opt_d.zero_grad()
+            optimizer_c.zero_grad()
+            optimizer_d.zero_grad()
 
             # Training the completion network
 
@@ -376,9 +249,13 @@ def train_C_and_D(
 
             centers_d = mask(batch_size, use_cuda=use_cuda, generate_mask=False)
             input_gd_real = x
-            input_ld_real = hole_cropping(input_gd_real, centers_d, use_cuda=use_cuda)
+            input_ld_real = hole_cropping(
+                input_gd_real, centers_d, use_cuda=use_cuda
+            )  # I used the same mask than in the false feeding, i think it's okay and faster.
             output_real = model_d((input_ld_real, input_gd_real))
-            real = torch.ones((batch_size, 1))  # Tensor of ones, labels of all original images
+            real = torch.ones(
+                (batch_size, 1)
+            )  # Tensor of ones indicating that images are labelled as true (1)
             if use_cuda:
                 real = real.cuda()
             loss_real = criterion(output_real, real)  # Loss if labelled as false
@@ -387,9 +264,9 @@ def train_C_and_D(
 
             loss_d = alpha * (
                 loss_real + loss_fake
-            )  # Using a different coefficient for each kind of losses could be a way to personalize the net
+            )  # The coefficient of each kind of losses could be a way to personalize the net !
             loss_d.backward()
-            opt_d.step()
+            optimizer_d.step()
 
             # Computing the second loss for the completion network
 
@@ -398,13 +275,13 @@ def train_C_and_D(
             output_fake = model_d((input_ld_fake, input_gd_fake))
             loss_c_2 = criterion(
                 output_fake, real
-            )  # Indeed, the completion network must lure the discrimination network, hence this loss
+            )  # Indeed, the completion network must lure the discriminatoir, hence this loss !
 
             # Updating the Completion model
 
             loss_c = loss_c_1 + alpha * loss_c_2
             loss_c.backward()
-            opt_c.step()
+            optimizer_c.step()
 
             # printing some statistics
 
@@ -420,7 +297,7 @@ def train_C_and_D(
                 )
                 running_loss_c, running_loss_d = 0, 0
             i += 1
-            del x
+            del x  # Je sais pas si c'est utile ! mon but c'est de désalouer la mémoire pour être sûr de pas dépasser la capacité de CUDA
         if (epoch % save_period == save_period - 1) or (epoch == n_epoch - 1):
             filename1 = "model_c_save/model_c_checkpoint_c_and_d_training_epoch{:d}.pth.tar".format(
                 epoch + 1
@@ -429,7 +306,7 @@ def train_C_and_D(
                 {
                     "epoch": epoch + 1,
                     "state_dict": model_c.state_dict(),
-                    "optimizer": opt_c.state_dict(),
+                    "optimizer": optimizer_c.state_dict(),
                 },
                 filename=filename1,
             )
@@ -440,7 +317,7 @@ def train_C_and_D(
                 {
                     "epoch": epoch + 1,
                     "state_dict": model_d.state_dict(),
-                    "optimizer": opt_d.state_dict(),
+                    "optimizer": optimizer_d.state_dict(),
                 },
                 filename=filename2,
             )
