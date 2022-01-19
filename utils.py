@@ -4,6 +4,7 @@ import torchvision.transforms as transforms
 import numpy as np
 import matplotlib.pyplot as plt
 import random as r
+from tqdm import tqdm
 
 NUM_FIGURES = 0
 
@@ -182,7 +183,11 @@ def test_and_compare(
                     X = data
                 for x in X:
                     m, centers = mask(
-                        b_size=1, h_range_mask=h_range_mask, w_range_mask=w_range_mask, num_holes=num_holes
+                        b_size=1,
+                        h_range_mask=h_range_mask,
+                        w_range_mask=w_range_mask,
+                        num_holes=num_holes,
+                        use_cuda=use_cuda,
                     )
                     centers_true = mask(
                         b_size=1,
@@ -190,6 +195,7 @@ def test_and_compare(
                         w_range_mask=w_range_mask,
                         num_holes=num_holes,
                         generate_mask=False,
+                        use_cuda=use_cuda,
                     )
                     plt.figure(figsize=[15, 5])
                     # imshow((x.cuda().view(3, 256, 256)))
@@ -231,6 +237,32 @@ def test_and_compare(
             i += 1
 
 
+def pixel_moyen(dataset, dataset_with_labels=False):
+    """Compute the mean pixel RGB value of a dataset.
+
+    Args:
+        dataset (iterable containing the RGB img): The dataset to compute the mean pixel.
+        dataset_with_labels (bool, optional): Whether the dataset has a label with images. Defaults to False.
+
+    Returns:
+        tuple: The RGB mean pixel.
+    """
+    pix = torch.zeros(3)
+    n = len(dataset)
+    for i in tqdm(range(n)):
+        data = dataset[i]
+        if dataset_with_labels:
+            data = data[0]
+        r = data[0].mean()
+        g = data[1].mean()
+        b = data[2].mean()
+        t = torch.tensor([r, g, b])
+        pix += t
+    pix = (255.0 / n) * pix
+
+    return tuple(pix)
+
+
 def save_checkpoint(state, filename):
     """
     Save the state checkpoint in a directory
@@ -239,7 +271,7 @@ def save_checkpoint(state, filename):
     torch.save(state, filename)
 
 
-def load_checkpoint(model, optimizer, filename):
+def load_checkpoint(model, optimizer, filename, use_cuda=True):
     """
     Loads the model and optimizer contained in a file, into the model and optimizer passed in the function.
     *inputs:
@@ -248,11 +280,8 @@ def load_checkpoint(model, optimizer, filename):
     - filename : the filename of the model to be loaded
     """
     print("=> Loading {} into the model".format(filename))
-    checkpoint = torch.load(filename)
+    device = torch.device("cuda:0") if (use_cuda and torch.cuda.is_available()) else torch.device("cpu")
+    checkpoint = torch.load(filename, map_location=device)
     model.load_state_dict(checkpoint["state_dict"])
     optimizer.load_state_dict(checkpoint["optimizer"])
     print("Model and optimizer loaded")
-
-
-# def test_and_compare(model = model_c, model_d = model_d, test_loader = test_loader, number_of_pictures = 5, h_range_mask = (96,128), w_range_mask = (96,128),
-#          num_holes = 1, p =0.002, dataset_with_labels = False):

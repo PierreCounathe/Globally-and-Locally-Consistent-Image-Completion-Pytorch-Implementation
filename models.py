@@ -206,3 +206,16 @@ class Discriminator(nn.Module):
         out = cat((Y, Z), dim=1)
         out = self.final_fc(out)
         return self.output_activation(out)
+
+
+if __name__ == "__main__":
+    import torch
+
+    use_cuda = torch.cuda.is_available()
+
+    # Initializing ADADELTA models and optimizers.
+    model_c = Completion().cuda() if use_cuda else Completion()
+    model_d = Discriminator().cuda() if use_cuda else Discriminator()
+
+    print(model_c)
+    print(model_d)
