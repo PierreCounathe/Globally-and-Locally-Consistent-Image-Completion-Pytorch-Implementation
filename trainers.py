@@ -1,4 +1,5 @@
 from utils import *
+from models import *
 import torch
 from tqdm import tqdm
 
@@ -81,7 +82,6 @@ def train_D(
     model_c,
     optimizer,
     train_set,
-    learning_rate=1.0,
     train_acc_period=100,
     n_epoch=5,
     save_period=10000,
@@ -322,3 +322,88 @@ def train_C_and_D(
                 filename=filename2,
             )
     print("Finished Training C&D simultaneously")
+
+
+if __name__ == "__main__":
+
+    # Override this parameter if you want to use CPU (not recommended).
+    use_cuda = torch.cuda.is_available()
+
+    # Initializing ADADELTA models and optimizers.
+    model_c = Completion().cuda() if use_cuda else Completion()
+    model_d = Discriminator().cuda() if use_cuda else Discriminator()
+    lr_d = 1.0
+    lr_c = 1.0
+    opt_d = torch.optim.Adadelta(model_d.parameters(), lr=lr_d)
+    opt_c = torch.optim.Adadelta(model_c.parameters(), lr=lr_c)
+
+    # Creating test_set and train_set.
+    transform = transforms.Compose(
+        [
+            transforms.RandomResizedCrop((256, 256), scale=(0.6666666666667, 1.0), ratio=(1.0, 1.0)),
+            transforms.ToTensor(),
+        ]
+    )
+    train_set = torchvision.datasets.CIFAR10(root="./data", transform=transform, train=True, download=True)
+    test_set = torchvision.datasets.CIFAR10(root="./data", transform=transform, train=False, download=True)
+    dataset_with_labels = True
+    test_loader = torch.utils.data.DataLoader(test_set)
+
+    # Computing mean pixel value of the dataset.
+    # NOTE: this mean value will be reused at inference time, make sure to save it somewhere.
+    # For CIFAR10 : mean_pixel = (124.9266, 121.8598, 112.7152)
+    mean_pixel = pixel_moyen(train_set, dataset_with_labels=dataset_with_labels)
+
+    # Training only the Completion network (Phase 1).
+    train_C(
+        model_c,
+        opt_c,
+        train_set,
+        train_acc_period=100,
+        n_epoch=5,
+        save_period=1,
+        batch_size=2,
+        num_samples=1000,
+        use_cuda=use_cuda,
+        dataset_with_labels=dataset_with_labels,
+        pixel=mean_pixel,
+    )
+
+    # Training only the Discriminator network (Phase 2).
+    train_D(
+        model_d,
+        model_c,
+        opt_c,
+        train_set,
+        train_acc_period=100,
+        n_epoch=5,
+        save_period=1,
+        batch_size=2,
+        num_samples=1000,
+        use_cuda=use_cuda,
+        dataset_with_labels=dataset_with_labels,
+        pixel=(130, 107, 95),
+    )
+
+    # Training both models jointly (Phase 3).
+
+    # This parameter defines the balance between both
+    # discriminator loss and L2 loss for the completion network.
+    alpha = 4e-4
+
+    train_C_and_D(
+        model_c,
+        model_d,
+        alpha,
+        opt_c,
+        opt_d,
+        train_set,
+        train_acc_period=100,
+        n_epoch=5,
+        save_period=1,
+        batch_size=2,
+        num_samples=1000,
+        use_cuda=use_cuda,
+        dataset_with_labels=dataset_with_labels,
+        pixel=(130, 107, 95),
+    )
