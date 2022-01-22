@@ -1,21 +1,26 @@
 from models import *
 from trainers import *
 from utils import *
+from torchvision import transforms
 
 if __name__ == "__main__":
 
     # Initialization.
-    use_cuda = torch.cuda.is_available()
+    device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
     lr_d = 1.0
     lr_c = 1.0
-    model_c = Completion().cuda() if use_cuda else Completion()
-    model_d = Discriminator().cuda() if use_cuda else Discriminator()
+    model_c = Completion().to(device)
+    model_d = Discriminator().to(device)
     opt_d = torch.optim.Adadelta(model_d.parameters(), lr=lr_d)
     opt_c = torch.optim.Adadelta(model_c.parameters(), lr=lr_c)
 
+    # Set paths for loading.
+    path_completion = "weights/model_c_checkpoint_eot9.pth.tar"
+    path_discriminator = "weights/model_d_checkpoint_eot9.pth.tar"
+
     # Loading presaved models.
-    load_checkpoint(model_c, opt_c, "weights/model_c_checkpoint_eot9.pth.tar", use_cuda=use_cuda)
-    load_checkpoint(model_d, opt_d, "weights/model_d_checkpoint_eot9.pth.tar", use_cuda=use_cuda)
+    load_checkpoint(model_c, opt_c, path_completion, device=device)
+    load_checkpoint(model_d, opt_d, path_discriminator, device=device)
 
     # Creating test_set and train_set.
     transform = transforms.Compose(
@@ -40,6 +45,6 @@ if __name__ == "__main__":
         num_holes=2,
         p=0.01,
         dataset_with_labels=dataset_with_labels,
-        use_cuda=use_cuda,
+        device=device,
         pixel=(130, 107, 95),
     )

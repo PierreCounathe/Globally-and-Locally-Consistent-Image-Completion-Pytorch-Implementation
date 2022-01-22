@@ -5,8 +5,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import random as r
 from tqdm import tqdm
+import os
 
-NUM_FIGURES = 0
+if os.path.exists('saves/figures'):
+    NUM_FIGURES = len(os.listdir('saves/figures'))
 
 
 def size_crop():
@@ -138,17 +140,17 @@ def hole_cropping(x, centers, device=torch.device("cpu")):
     t = torch.zeros((b_size, 3, h // 2, w // 2)).to(device)
 
     for i in range(b_size):
-        
+
         # Only take the first hole of the list, assuming there is only one hole.
-        h1, w1 = centers[i][0]  
+        h1, w1 = centers[i][0]
 
         # If the center is too close from the edges, the holes won't be in the center.
         h1 = min(3 * h // 4, max(h // 4, h1))
         w1 = min(3 * w // 4, max(w // 4, w1))
-        
+
         # Crop the image.
         t[i] = x[i, :, h1 - h // 4 : h1 + h // 4, w1 - w // 4 : w1 + w // 4]
-        
+
     return t
 
 
@@ -174,66 +176,66 @@ def test_and_compare(
     i = 0
     global NUM_FIGURES
     for data in test_loader:
-        if np.random.random() < p:
-            if i < number_of_pictures:
-                if dataset_with_labels:
-                    X, Y = data
-                else:
-                    X = data
-                for x in X:
-                    m, centers = mask(
-                        b_size=1,
-                        h_range_mask=h_range_mask,
-                        w_range_mask=w_range_mask,
-                        num_holes=num_holes,
-                        use_cuda=use_cuda,
-                    )
-                    centers_true = mask(
-                        b_size=1,
-                        h_range_mask=h_range_mask,
-                        w_range_mask=w_range_mask,
-                        num_holes=num_holes,
-                        generate_mask=False,
-                        use_cuda=use_cuda,
-                    )
-                    plt.figure(figsize=[15, 5])
-                    # imshow((x.cuda().view(3, 256, 256)))
-                    image1 = x.cuda().view(3, 256, 256)
-                    ax1 = plt.subplot(1, 3, 1)
-                    npimg1 = image1.cpu().numpy()
-                    plt.imshow(np.transpose(npimg1, (1, 2, 0)))
-                    # imshow((x.cuda() - x.cuda()* m).view(3, 256, 256))
-                    image2 = (x.cuda() - x.cuda() * m).view(3, 256, 256)
-                    ax2 = plt.subplot(1, 3, 2)
-                    npimg2 = image2.cpu().numpy()
-                    plt.imshow(np.transpose(npimg2, (1, 2, 0)))
-                    x = x.view(1, 3, 256, 256)  # to apply the mask : x is equivalent to a batch of size 1
-                    if use_cuda:
-                        im = apply_mask(x.cuda(), m, pixel).view(4, 256, 256)
-                    else:
-                        im = apply_mask(x, m, pixel).view(4, 256, 256)
-                    model_c_input = im.view(1, 4, 256, 256)
-                    model_c_output = model_c(model_c_input)
-                    recombined_output = x.cuda() - x.cuda() * m + model_c_output * m
-                    # imshow(recombined_output.detach().view(3, 256, 256))
-                    image3 = recombined_output.detach().view(3, 256, 256)
-                    ax3 = plt.subplot(1, 3, 3)
-                    npimg3 = image3.cpu().numpy()
-                    input_true_ld = hole_cropping(x.cuda().detach(), centers_true, use_cuda=use_cuda)
-                    output_true_d = model_d((input_true_ld, x.cuda().detach()))
-                    prob_t = output_true_d.item()
-                    input_ld = hole_cropping(model_c_output, centers, use_cuda=use_cuda)
-                    output_d = model_d((input_ld, model_c_output))
-                    prob = output_d.item()
-                    plt.title(
-                        "P(True) = True : {} - P(False) = True : {}".format(prob_t, prob), loc="center"
-                    )
-                    plt.imshow(np.transpose(npimg3, (1, 2, 0)))
-                    plt.savefig("saves/figures/fig{}.png".format(NUM_FIGURES + 1))
-                    NUM_FIGURES += 1
+        if i < number_of_pictures:
+            # Random number used to use random images from test set.
+            if np.random.random() > p:
+                continue
+            if dataset_with_labels:
+                X, _ = data
             else:
-                break
+                X = data
+            for x in X:
+                x = x.to(device)
+                m, centers = mask(
+                    b_size=1,
+                    h_range_mask=h_range_mask,
+                    w_range_mask=w_range_mask,
+                    num_holes=num_holes,
+                    device=device,
+                )
+                centers_true = mask(
+                    b_size=1,
+                    h_range_mask=h_range_mask,
+                    w_range_mask=w_range_mask,
+                    num_holes=num_holes,
+                    generate_mask=False,
+                    device=device,
+                )
+                plt.figure(figsize=[15, 5])
+                # imshow((x.view(3, 256, 256)))
+                image1 = x.view(3, 256, 256)
+                ax1 = plt.subplot(1, 3, 1)
+                npimg1 = image1.cpu().numpy()
+                plt.imshow(np.transpose(npimg1, (1, 2, 0)))
+                # imshow((x - x* m).view(3, 256, 256))
+                image2 = (x - x * m).view(3, 256, 256)
+                ax2 = plt.subplot(1, 3, 2)
+                npimg2 = image2.cpu().numpy()
+                plt.imshow(np.transpose(npimg2, (1, 2, 0)))
+
+                # to apply the mask : x is equivalent to a batch of size 1
+                x = x.view(1, 3, 256, 256).to(device)
+                im = apply_mask(x, m, pixel).view(4, 256, 256)
+                model_c_input = im.view(1, 4, 256, 256)
+                model_c_output = model_c(model_c_input)
+                recombined_output = x.to(device) - x * m + model_c_output * m
+                # imshow(recombined_output.detach().view(3, 256, 256))
+                image3 = recombined_output.detach().view(3, 256, 256)
+                ax3 = plt.subplot(1, 3, 3)
+                npimg3 = image3.cpu().numpy()
+                input_true_ld = hole_cropping(x.detach(), centers_true, device=device)
+                output_true_d = model_d((input_true_ld, x.detach()))
+                prob_t = output_true_d.item()
+                input_ld = hole_cropping(model_c_output, centers, device=device)
+                output_d = model_d((input_ld, model_c_output))
+                prob = output_d.item()
+                plt.title(f"P(True) = True : {prob_t:3f} - P(False) = True : {prob:3f}", loc="center")
+                plt.imshow(np.transpose(npimg3, (1, 2, 0)))
+                plt.savefig("saves/figures/fig{}.png".format(NUM_FIGURES + 1))
+                NUM_FIGURES += 1
             i += 1
+        else:
+            break
 
 
 def pixel_moyen(dataset, dataset_with_labels=False):
@@ -279,7 +281,7 @@ def load_checkpoint(model, optimizer, filename, device=torch.device("cpu")):
     - filename : the filename of the model to be loaded
     """
     print("=> Loading {} into the model".format(filename))
-    device = torch.device("cuda:0") if (use_cuda and torch.cuda.is_available()) else torch.device("cpu")
+    device = torch.device("cuda:0") if (torch.cuda.is_available()) else torch.device("cpu")
     checkpoint = torch.load(filename, map_location=device)
     model.load_state_dict(checkpoint["state_dict"])
     optimizer.load_state_dict(checkpoint["optimizer"])

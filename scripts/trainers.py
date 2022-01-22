@@ -1,6 +1,7 @@
 from utils import *
 from models import *
 import torch
+from torchvision import transforms
 from tqdm import tqdm
 
 
@@ -19,7 +20,7 @@ def train_C(
     save_period=10000,
     batch_size=8,
     num_samples=1000,
-    use_cuda=True,
+    device=torch.device("cpu"),
     dataset_with_labels=False,
     pixel=(130, 107, 95),
 ):  # On pourra éventuellement rajouter un test sur une image à intervalle réguliers
@@ -42,15 +43,14 @@ def train_C(
             else:
                 x = data
 
-            if use_cuda:
-                x = x.cuda()
+            x = x.to(device)
 
             # zero the parameter gradients
             optimizer.zero_grad()
 
             # forward + backward + optimize
-            m, _ = mask(batch_size, use_cuda=use_cuda)
-            inputs = apply_mask(x, m, pixel, use_cuda=use_cuda)
+            m, _ = mask(batch_size, device=device)
+            inputs = apply_mask(x, m, pixel, device=device)
             outputs = model_c(inputs)
 
             loss = C_loss(x, outputs, m)
@@ -87,7 +87,7 @@ def train_D(
     save_period=10000,
     batch_size=8,
     num_samples=1000,
-    use_cuda=True,
+    device=torch.device("cpu"),
     dataset_with_labels=False,
     pixel=(130, 107, 95),
 ):
@@ -112,41 +112,38 @@ def train_D(
             else:
                 x = data
 
-            if use_cuda:
-                x = x.cuda()
+            x = x.to(device)
 
             # zero the parameter gradients
             optimizer.zero_grad()
 
             # Feeding the network with completed images
 
-            mask_c, centers_c = mask(batch_size, use_cuda=use_cuda)
-            input_c = apply_mask(x, mask_c, pixel, use_cuda=use_cuda)
+            mask_c, centers_c = mask(batch_size, device=device)
+            input_c = apply_mask(x, mask_c, pixel, device=device)
             output_c = model_c(input_c)
             false = torch.zeros(
                 (batch_size, 1)
             )  # The context discriminator should label all images as fake
-            if use_cuda:
-                false = false.cuda()
+            false = false.to(device)
             input_gd_fake = (
                 output_c.detach()
             )  # We don't need the gradients for this batch, as the Generator is not trained here
-            input_ld_fake = hole_cropping(input_gd_fake, centers_c, use_cuda=use_cuda)
+            input_ld_fake = hole_cropping(input_gd_fake, centers_c, device=device)
             output_fake = model_d((input_ld_fake, input_gd_fake))
             loss_fake = criterion(output_fake, false)  # Loss if labelled as true
 
             # Feeding the network with real images
             centers_d = mask(
-                batch_size, use_cuda=use_cuda, generate_mask=False
+                batch_size, device=device, generate_mask=False
             )  # Only generate the hole centers, but not the tensors as it is expensive !
             input_gd_real = x
-            input_ld_real = hole_cropping(input_gd_real, centers_d, use_cuda=use_cuda)
+            input_ld_real = hole_cropping(input_gd_real, centers_d, device=device)
             output_real = model_d((input_ld_real, input_gd_real))
             real = torch.ones(
                 (batch_size, 1)
             )  # Tensor of ones indicating that images are labelled as true (1)
-            if use_cuda:
-                real = real.cuda()
+            real = real.to(device)
             loss_real = criterion(output_real, real)  # Loss if labelled as false
 
             # Recombining the losses
@@ -188,7 +185,7 @@ def train_C_and_D(
     save_period=10000,
     batch_size=8,
     num_samples=1000,
-    use_cuda=True,
+    device=torch.device("cpu"),
     dataset_with_labels=False,
     pixel=(130, 107, 95),
 ):
@@ -216,8 +213,7 @@ def train_C_and_D(
             else:
                 x = data
 
-            if use_cuda:
-                x = x.cuda()
+            x = x.to(device)
 
             # zero the parameter gradients
 
@@ -226,8 +222,8 @@ def train_C_and_D(
 
             # Training the completion network
 
-            mask_c, centers_c = mask(batch_size, use_cuda=use_cuda)
-            input_c = apply_mask(x, mask_c, pixel, use_cuda=use_cuda)
+            mask_c, centers_c = mask(batch_size, device=device)
+            input_c = apply_mask(x, mask_c, pixel, device=device)
             output_c = model_c(input_c)
             loss_c_1 = C_loss(x, output_c, mask_c)
 
@@ -236,28 +232,26 @@ def train_C_and_D(
             false = torch.zeros(
                 (batch_size, 1)
             )  # The context discriminator should label all images as fake
-            if use_cuda:
-                false = false.cuda()
+            false = false.to(device)
             input_gd_fake = (
                 output_c.detach()
             )  # We detach here so that the gradients are not used, only doing a backward pass for D
-            input_ld_fake = hole_cropping(input_gd_fake, centers_c, use_cuda=use_cuda)
+            input_ld_fake = hole_cropping(input_gd_fake, centers_c, device=device)
             output_fake = model_d((input_ld_fake, input_gd_fake))
             loss_fake = criterion(output_fake, false)  # Loss if labelled as true
 
             # Feeding the discrimination network with real images
 
-            centers_d = mask(batch_size, use_cuda=use_cuda, generate_mask=False)
+            centers_d = mask(batch_size, device=device, generate_mask=False)
             input_gd_real = x
             input_ld_real = hole_cropping(
-                input_gd_real, centers_d, use_cuda=use_cuda
+                input_gd_real, centers_d, device=device
             )  # I used the same mask than in the false feeding, i think it's okay and faster.
             output_real = model_d((input_ld_real, input_gd_real))
             real = torch.ones(
                 (batch_size, 1)
             )  # Tensor of ones indicating that images are labelled as true (1)
-            if use_cuda:
-                real = real.cuda()
+            real = real.to(device)
             loss_real = criterion(output_real, real)  # Loss if labelled as false
 
             # Updating the Discriminator model
@@ -271,7 +265,7 @@ def train_C_and_D(
             # Computing the second loss for the completion network
 
             input_gd_fake = output_c  # Not detaching now because we will use the gradients
-            input_ld_fake = hole_cropping(input_gd_fake, centers_c, use_cuda=use_cuda)
+            input_ld_fake = hole_cropping(input_gd_fake, centers_c, device=device)
             output_fake = model_d((input_ld_fake, input_gd_fake))
             loss_c_2 = criterion(
                 output_fake, real
@@ -327,11 +321,11 @@ def train_C_and_D(
 if __name__ == "__main__":
 
     # Override this parameter if you want to use CPU (not recommended).
-    use_cuda = torch.cuda.is_available()
+    device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
 
     # Initializing ADADELTA models and optimizers.
-    model_c = Completion().cuda() if use_cuda else Completion()
-    model_d = Discriminator().cuda() if use_cuda else Discriminator()
+    model_c = Completion().to(device)
+    model_d = Discriminator().to(device)
     lr_d = 1.0
     lr_c = 1.0
     opt_d = torch.optim.Adadelta(model_d.parameters(), lr=lr_d)
@@ -364,7 +358,7 @@ if __name__ == "__main__":
         save_period=1,
         batch_size=2,
         num_samples=1000,
-        use_cuda=use_cuda,
+        device=device,
         dataset_with_labels=dataset_with_labels,
         pixel=mean_pixel,
     )
@@ -380,9 +374,9 @@ if __name__ == "__main__":
         save_period=1,
         batch_size=2,
         num_samples=1000,
-        use_cuda=use_cuda,
+        device=device,
         dataset_with_labels=dataset_with_labels,
-        pixel=(130, 107, 95),
+        pixel=mean_pixel,
     )
 
     # Training both models jointly (Phase 3).
@@ -403,7 +397,7 @@ if __name__ == "__main__":
         save_period=1,
         batch_size=2,
         num_samples=1000,
-        use_cuda=use_cuda,
+        device=device,
         dataset_with_labels=dataset_with_labels,
-        pixel=(130, 107, 95),
+        pixel=mean_pixel,
     )
