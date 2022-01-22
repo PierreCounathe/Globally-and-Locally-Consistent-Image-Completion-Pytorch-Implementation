@@ -133,4 +133,4 @@ dmypy.json
 
 # Repo related stuff
 data/
-saves/
+saves/figures/*

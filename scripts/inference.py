@@ -2,6 +2,8 @@ from models import *
 from trainers import *
 from utils import *
 from torchvision import transforms
+import torchvision
+import torch
 
 if __name__ == "__main__":
 
@@ -29,10 +31,15 @@ if __name__ == "__main__":
             transforms.ToTensor(),
         ]
     )
-    train_set = torchvision.datasets.CIFAR10(root="./data", transform=transform, train=True, download=True)
-    test_set = torchvision.datasets.CIFAR10(root="./data", transform=transform, train=False, download=True)
+
+    test_set = torchvision.datasets.ImageFolder(root="test/", transform=transform)
     dataset_with_labels = True
     test_loader = torch.utils.data.DataLoader(test_set)
+
+    # Computing mean pixel value of the dataset.
+    # NOTE: this value used at inference time should be the one you did your training phase with.
+    # For CIFAR10 : mean_pixel = (124.9266, 121.8598, 112.7152)
+    mean_pixel = pixel_moyen(test_set, dataset_with_labels=dataset_with_labels)
 
     # Generate recompleted images.
     test_and_compare(
@@ -46,5 +53,5 @@ if __name__ == "__main__":
         p=0.01,
         dataset_with_labels=dataset_with_labels,
         device=device,
-        pixel=(130, 107, 95),
+        pixel=mean_pixel,
     )
