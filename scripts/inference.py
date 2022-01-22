@@ -14,8 +14,8 @@ if __name__ == "__main__":
     opt_c = torch.optim.Adadelta(model_c.parameters(), lr=lr_c)
 
     # Loading presaved models.
-    load_checkpoint(model_c, opt_c, "model_c_checkpoint_eot9.pth.tar", use_cuda=use_cuda)
-    load_checkpoint(model_d, opt_d, "model_d_checkpoint_eot9.pth.tar", use_cuda=use_cuda)
+    load_checkpoint(model_c, opt_c, "weights/model_c_checkpoint_eot9.pth.tar", use_cuda=use_cuda)
+    load_checkpoint(model_d, opt_d, "weights/model_d_checkpoint_eot9.pth.tar", use_cuda=use_cuda)
 
     # Creating test_set and train_set.
     transform = transforms.Compose(

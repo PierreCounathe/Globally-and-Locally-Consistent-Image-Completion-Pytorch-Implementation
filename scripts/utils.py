@@ -1,6 +1,6 @@
 import torch
 import torchvision
-import torchvision.transforms as transforms
+from torchvision.transforms import RandomResizedCrop
 import numpy as np
 import matplotlib.pyplot as plt
 import random as r
@@ -14,10 +14,10 @@ def size_crop():
     Defines the transformation that is applied to the images in pre-processing.
 
     Returns:
-        torchvision.transforms.transforms.RandomResizedCrop: A pre-processing transformation.
+        RandomResizedCrop: A pre-processing transformation.
     """
 
-    return transforms.RandomResizedCrop((256, 256), scale=(0.6666666666667, 1.0), ratio=(1.0, 1.0))
+    return RandomResizedCrop((256, 256), scale=(0.6666666666667, 1.0), ratio=(1.0, 1.0))
 
 
 def imshow(img: torch.Tensor):
@@ -38,7 +38,7 @@ def mask(
     h_range_mask=(96, 128),
     w_range_mask=(96, 128),
     num_holes=1,
-    use_cuda=True,
+    device=torch.device("cpu"),
     generate_mask=True,
 ):
     """
@@ -60,7 +60,7 @@ def mask(
     if generate_mask:
 
         # Initializing the mask.
-        m = torch.zeros((b_size, 1, h, w)).cuda() if use_cuda else torch.zeros((b_size, 1, h, w))
+        m = torch.zeros((b_size, 1, h, w)).to(device)
 
     # Initializing the center.
     centers = [[] for _ in range(b_size)]
@@ -85,7 +85,7 @@ def mask(
     return (m, centers) if generate_mask else centers
 
 
-def apply_mask(x, m, pixel, use_cuda=True):
+def apply_mask(x, m, pixel, device=torch.device("cpu")):
     """
     Set each pixel in the masked zone of an image to a given color.
 
@@ -98,38 +98,34 @@ def apply_mask(x, m, pixel, use_cuda=True):
         A [b_size,4,H,W] tensor with all images patched + the mask in the the 4 elements of dim = 1
     """
     pix = torch.tensor(pixel).view((1, 3, 1, 1)) / 255.0
-    if use_cuda:
-        pix = pix.cuda()
+    pix = pix.to(device)
 
     x_patched = x - x * m + m * pix
 
     return torch.cat((x_patched, m), dim=1)
 
 
-def visuel_mask(test_loader, n=1, use_cuda=True):
+def visuel_mask(test_loader, n=1, device=torch.device("cpu")):
     """
     A visual function that will show what is a batch of images with turquoise holes
     """
     for _ in range(n):
-        # get some random training images
+        # Get some random training images.
         dataiter = iter(test_loader)
-        images, _ = dataiter.next()
-        m, l = mask(
-            64, h=32, w=32, h_range_mask=(5, 10), w_range_mask=(5, 10), num_holes=1
-        )  # Generate an appropriate turquoise mask
-        if use_cuda:
-            im = apply_mask(images.cuda(), m, (64, 224, 208))  # Apply the mask
-        else:
-            im = apply_mask(images, m, (64, 224, 208))
-        # show images with the patches
+        images, _ = dataiter.next().to(device)
+
+        # Generate an appropriate mask.
+        m, l = mask(64, h=32, w=32, h_range_mask=(5, 10), w_range_mask=(5, 10), num_holes=1, device=device)
+        im = apply_mask(images, m, (64, 224, 208))
+
+        # Show images with the patches.
         imshow(torchvision.utils.make_grid(im[:, :3]))
         imshow(torchvision.utils.make_grid(im[:, 3:]))
+
         return (im[:, :3], l)
 
 
-def hole_cropping(
-    x, centers, use_cuda=True
-):  # This function is not so generic because its particular to our problem, it returns an image half the size of the first
+def hole_cropping(x, centers, device=torch.device("cpu")):
     """
     * inputs :
         - x : a [b_size,3,H,W] shape tensor
@@ -139,17 +135,20 @@ def hole_cropping(
         A [b_size,3,H//2,W//2] a cropped version of the image, the crop being centered on the hole location
     """
     b_size, _, h, w = x.shape
-    if use_cuda:
-        t = torch.zeros((b_size, 3, h // 2, w // 2)).cuda()
-    else:
-        t = torch.zeros((b_size, 3, h // 2, w // 2))
+    t = torch.zeros((b_size, 3, h // 2, w // 2)).to(device)
+
     for i in range(b_size):
-        h1, w1 = centers[i][0]  # Only take the first hole of the list, assuming there is only one hole.
-        h1 = min(
-            3 * h // 4, max(h // 4, h1)
-        )  # If the center is too close from the edges, the holes won't be in the center
+        
+        # Only take the first hole of the list, assuming there is only one hole.
+        h1, w1 = centers[i][0]  
+
+        # If the center is too close from the edges, the holes won't be in the center.
+        h1 = min(3 * h // 4, max(h // 4, h1))
         w1 = min(3 * w // 4, max(w // 4, w1))
+        
+        # Crop the image.
         t[i] = x[i, :, h1 - h // 4 : h1 + h // 4, w1 - w // 4 : w1 + w // 4]
+        
     return t
 
 
@@ -163,7 +162,7 @@ def test_and_compare(
     num_holes=1,
     p=0.002,
     dataset_with_labels=False,
-    use_cuda=True,
+    device=torch.device("cpu"),
     pixel=(130, 107, 95),
 ):
     """
@@ -271,7 +270,7 @@ def save_checkpoint(state, filename):
     torch.save(state, filename)
 
 
-def load_checkpoint(model, optimizer, filename, use_cuda=True):
+def load_checkpoint(model, optimizer, filename, device=torch.device("cpu")):
     """
     Loads the model and optimizer contained in a file, into the model and optimizer passed in the function.
     *inputs:

@@ -211,11 +211,10 @@ class Discriminator(nn.Module):
 if __name__ == "__main__":
     import torch
 
-    use_cuda = torch.cuda.is_available()
+    device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
 
     # Initializing ADADELTA models and optimizers.
-    model_c = Completion().cuda() if use_cuda else Completion()
-    model_d = Discriminator().cuda() if use_cuda else Discriminator()
-
+    model_c = Completion().to(device)
+    model_d = Discriminator().to(device)
     print(model_c)
     print(model_d)
