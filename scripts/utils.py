@@ -7,8 +7,8 @@ import random as r
 from tqdm import tqdm
 import os
 
-if os.path.exists('saves/figures'):
-    NUM_FIGURES = len(os.listdir('saves/figures'))
+if os.path.exists("saves/figures"):
+    NUM_FIGURES = len(os.listdir("saves/figures"))
 
 
 def size_crop():

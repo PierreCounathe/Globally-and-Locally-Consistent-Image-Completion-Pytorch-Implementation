@@ -321,7 +321,7 @@ def train_C_and_D(
 if __name__ == "__main__":
 
     # Override this parameter if you want to use CPU (not recommended).
-    device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
+    device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
 
     # Initializing ADADELTA models and optimizers.
     model_c = Completion().to(device)
