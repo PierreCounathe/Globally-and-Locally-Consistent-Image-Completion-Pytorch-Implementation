@@ -65,7 +65,7 @@ def train_C(
             i += 1
             del x  # Je sais pas si c'est utile ! mon but c'est de désalouer la mémoire pour être sûr de pas dépasser la capacité de CUDA
         if (epoch % save_period == save_period - 1) or (epoch == n_epoch - 1):
-            filename = "model_c_save/model_c_checkpoint_c_training_epoch{:d}.pth.tar".format(epoch + 1)
+            filename = "weights/model_c_save/model_c_checkpoint_c_training_epoch{:d}.pth.tar".format(epoch + 1)
             save_checkpoint(
                 {
                     "epoch": epoch + 1,
@@ -161,7 +161,7 @@ def train_D(
             i += 1
             del x  # Je sais pas si c'est utile ! mon but c'est de désalouer la mémoire pour être sûr de pas dépasser la capacité de CUDA
         if (epoch % save_period == save_period - 1) or (epoch == n_epoch - 1):
-            filename = "model_d_save/model_d_checkpoint_d_training_epoch{:d}.pth.tar".format(epoch + 1)
+            filename = "weights/model_d_save/model_d_checkpoint_d_training_epoch{:d}.pth.tar".format(epoch + 1)
             save_checkpoint(
                 {
                     "epoch": epoch + 1,
@@ -293,7 +293,7 @@ def train_C_and_D(
             i += 1
             del x  # Je sais pas si c'est utile ! mon but c'est de désalouer la mémoire pour être sûr de pas dépasser la capacité de CUDA
         if (epoch % save_period == save_period - 1) or (epoch == n_epoch - 1):
-            filename1 = "model_c_save/model_c_checkpoint_c_and_d_training_epoch{:d}.pth.tar".format(
+            filename1 = "weights/model_c_save/model_c_checkpoint_c_and_d_training_epoch{:d}.pth.tar".format(
                 epoch + 1
             )
             save_checkpoint(
@@ -304,7 +304,7 @@ def train_C_and_D(
                 },
                 filename=filename1,
             )
-            filename2 = "model_d_save/model_d_checkpoint_c_and_d_training_epoch{:d}.pth.tar".format(
+            filename2 = "weights/model_d_save/model_d_checkpoint_c_and_d_training_epoch{:d}.pth.tar".format(
                 epoch + 1
             )
             save_checkpoint(
@@ -345,8 +345,9 @@ if __name__ == "__main__":
 
     # Computing mean pixel value of the dataset.
     # NOTE: this mean value will be reused at inference time, make sure to save it somewhere.
-    # For CIFAR10 : mean_pixel = (124.9266, 121.8598, 112.7152)
-    mean_pixel = pixel_moyen(train_set, dataset_with_labels=dataset_with_labels)
+    # For CIFAR10 : 
+    mean_pixel = (124.9266, 121.8598, 112.7152)
+    # mean_pixel = pixel_moyen(train_set, dataset_with_labels=dataset_with_labels)
 
     # Training only the Completion network (Phase 1).
     train_C(
@@ -354,10 +355,10 @@ if __name__ == "__main__":
         opt_c,
         train_set,
         train_acc_period=100,
-        n_epoch=5,
+        n_epoch=1,
         save_period=1,
         batch_size=2,
-        num_samples=1000,
+        num_samples=100,
         device=device,
         dataset_with_labels=dataset_with_labels,
         pixel=mean_pixel,
@@ -370,10 +371,10 @@ if __name__ == "__main__":
         opt_c,
         train_set,
         train_acc_period=100,
-        n_epoch=5,
+        n_epoch=1,
         save_period=1,
         batch_size=2,
-        num_samples=1000,
+        num_samples=100,
         device=device,
         dataset_with_labels=dataset_with_labels,
         pixel=mean_pixel,
@@ -393,10 +394,10 @@ if __name__ == "__main__":
         opt_d,
         train_set,
         train_acc_period=100,
-        n_epoch=5,
+        n_epoch=1,
         save_period=1,
         batch_size=2,
-        num_samples=1000,
+        num_samples=100,
         device=device,
         dataset_with_labels=dataset_with_labels,
         pixel=mean_pixel,

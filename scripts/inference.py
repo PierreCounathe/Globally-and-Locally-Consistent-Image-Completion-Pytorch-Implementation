@@ -50,7 +50,7 @@ if __name__ == "__main__":
         h_range_mask=(48, 50),
         w_range_mask=(48, 50),
         num_holes=2,
-        p=0.01,
+        p=1.0,
         dataset_with_labels=dataset_with_labels,
         device=device,
         pixel=mean_pixel,

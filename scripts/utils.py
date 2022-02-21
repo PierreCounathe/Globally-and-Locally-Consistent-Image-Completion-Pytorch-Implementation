@@ -9,7 +9,9 @@ import os
 
 if os.path.exists("saves/figures"):
     NUM_FIGURES = len(os.listdir("saves/figures"))
-
+else :
+    print("Please create a saves/figures directory for correct visualization")
+    NUM_FIGURES = 0
 
 def size_crop():
     """
@@ -215,7 +217,7 @@ def test_and_compare(
 
                 # to apply the mask : x is equivalent to a batch of size 1
                 x = x.view(1, 3, 256, 256).to(device)
-                im = apply_mask(x, m, pixel).view(4, 256, 256)
+                im = apply_mask(x, m, pixel, device=device).view(4, 256, 256)
                 model_c_input = im.view(1, 4, 256, 256)
                 model_c_output = model_c(model_c_input)
                 recombined_output = x.to(device) - x * m + model_c_output * m
