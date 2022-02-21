@@ -63,9 +63,9 @@ For each next three examples, the images were produced at three different step o
 ![](results/cdf3.png)
 
 
-## Project Decomposition
+## Organization of this directory
 
-This project has four main components: 3 .py files and an .ipynb notebook file:
+This project has four main components: 4 .py files and an .ipynb notebook:
 - [models.py](scripts/models.py) contains two classes defining the completion and discrimination networks;
 - [utils.py](scripts/utils.py) contains all the side functions that we needed to perform various tasks;
 - [trainers.py](scripts/trainers.py) contains the implementation of the three training algorithms used to train the GAN;
@@ -148,4 +148,3 @@ To test our weights on more images, just add them in [test/img](test/img) direct
 
 
 Results will be saved in the saves/figures directory.
-## Organization of this directory
