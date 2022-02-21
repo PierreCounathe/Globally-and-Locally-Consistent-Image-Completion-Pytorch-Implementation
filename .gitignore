@@ -134,4 +134,5 @@ dmypy.json
 # Repo related stuff
 data/
 saves/figures/*
-weights/*
+weights/model_c_save/*
+weights/model_d_save/*
