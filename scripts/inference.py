@@ -8,7 +8,7 @@ import torch
 if __name__ == "__main__":
 
     # Initialization.
-    device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
+    device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")    
     lr_d = 1.0
     lr_c = 1.0
     model_c = Completion().to(device)
@@ -17,8 +17,8 @@ if __name__ == "__main__":
     opt_c = torch.optim.Adadelta(model_c.parameters(), lr=lr_c)
 
     # Set paths for loading.
-    path_completion = "weights/model_c_checkpoint_eot9.pth.tar"
-    path_discriminator = "weights/model_d_checkpoint_eot9.pth.tar"
+    path_completion = "weights/model_c_save/model_c_checkpoint_eot9.pth.tar"
+    path_discriminator = "weights/model_d_save/model_d_checkpoint_eot9.pth.tar"
 
     # Loading presaved models.
     load_checkpoint(model_c, opt_c, path_completion, device=device)
