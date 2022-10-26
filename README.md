@@ -142,9 +142,4 @@ test_and_compare(
 )
 ```
 
-To test our weights on more images, just add them in [test/img](test/img) directory.
-
-![](test/img/img_test1.jpg)
-
-
-Results will be saved in the saves/figures directory.
+To test our weights on more images, just add them in [test/img](test/img) directory. Results will be saved in the saves/figures directory.
